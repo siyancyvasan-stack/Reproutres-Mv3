@@ -4,6 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import { Contact, loadContacts, loadWhatsappDestination, whatsappUrl } from '../../services/contactApi';
 import { ApiError } from '../../services/apiClient';
 
+// Reproutes support / manager WhatsApp destination. Keep this in international
+// format so wa.me works on desktop, mobile, and the WhatsApp application.
+const SUPPORT_WHATSAPP_NUMBER = '94729790397';
+
 const roleLabel = (role: Contact['role']) =>
   role === 'AGENT' ? 'Sales Person' : role === 'MANAGER' ? 'Manager' : 'Factory Manager';
 
@@ -77,23 +81,6 @@ export const FloatingWhatsAppContact: React.FC<{ aboveMobileNav?: boolean }> = (
     if (isSalesPerson) void loadSalesDestination();
   }, [isSalesPerson, loadSalesDestination]);
 
-  const openSalesManagerWhatsApp = async () => {
-    // Open a tab during the user gesture so mobile/desktop popup protection does
-    // not block the redirect if the authorized contact is still loading.
-    const pendingTab = window.open('', '_blank');
-    if (pendingTab) pendingTab.opener = null;
-    const destination = salesWhatsappNumber ?? await loadSalesDestination();
-    if (!destination) {
-      pendingTab?.close();
-      if (!error) setError('The Reproutes WhatsApp contact is not configured. Please contact administration.');
-      setOpen(true);
-      return;
-    }
-    const url = whatsappUrl(destination, user?.name ?? 'Reproutes user');
-    if (pendingTab) pendingTab.location.replace(url);
-    else window.location.assign(url);
-  };
-
   React.useEffect(() => {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
@@ -109,6 +96,13 @@ export const FloatingWhatsAppContact: React.FC<{ aboveMobileNav?: boolean }> = (
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [open]);
+
+  const openSupportWhatsApp = () => {
+    const url = whatsappUrl(SUPPORT_WHATSAPP_NUMBER, user?.name ?? 'Reproutes user');
+    const whatsappWindow = window.open(url, '_blank', 'noopener,noreferrer');
+    if (whatsappWindow) whatsappWindow.opener = null;
+    else window.location.assign(url);
+  };
 
   return (
     <div
@@ -159,8 +153,8 @@ export const FloatingWhatsAppContact: React.FC<{ aboveMobileNav?: boolean }> = (
         <button
           type="button"
           aria-label="Contact on WhatsApp"
-          aria-expanded={isSalesPerson ? false : open}
-          onClick={() => isSalesPerson ? void openSalesManagerWhatsApp() : setOpen((value) => !value)}
+          aria-expanded={false}
+          onClick={openSupportWhatsApp}
           className="relative grid h-14 w-14 place-items-center rounded-full border border-emerald-400/40 bg-emerald-600 text-white shadow-xl shadow-emerald-900/30 transition hover:scale-105 hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-300/50 sm:h-16 sm:w-16"
         >
           <WhatsAppMark className="h-8 w-8 sm:h-9 sm:w-9" />
