@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Store,
   CreditCard,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -34,6 +35,7 @@ export const AgentNewOrderPage: React.FC = () => {
     "Cash" | "Credit 14 Days" | "Credit 30 Days" | "Cheque"
   >("Credit 14 Days");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [remarks, setRemarks] = useState("");
 
   useEffect(() => {
     void loadShops([])
@@ -111,6 +113,7 @@ export const AgentNewOrderPage: React.FC = () => {
           shopName: shop.name,
           shopAddress: shop.address,
           paymentTerm,
+          remarks: remarks.trim() || undefined,
           items: orderItems.map((item) => ({
             productId: item.product.id,
             cases: item.cases,
@@ -286,6 +289,28 @@ export const AgentNewOrderPage: React.FC = () => {
                 </button>
               ))}
             </div>
+          </GlassCard>
+
+          <GlassCard className="p-5 space-y-3">
+            <label
+              htmlFor="order-remarks"
+              className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4 text-cyan-400" />
+              <span>Order Note / Remarks</span>
+            </label>
+            <textarea
+              id="order-remarks"
+              value={remarks}
+              onChange={(event) => setRemarks(event.target.value.slice(0, 1000))}
+              maxLength={1000}
+              rows={3}
+              placeholder="Add any customer request, delivery instruction, or order note (optional)"
+              className="w-full resize-y rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-xs text-white placeholder:text-slate-500 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            />
+            <p className="text-right text-[10px] text-slate-500">
+              {remarks.length}/1000
+            </p>
           </GlassCard>
 
           {/* Order Summary Footer */}
