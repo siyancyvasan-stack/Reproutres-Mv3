@@ -10,10 +10,13 @@ import {
   Search,
   ShieldCheck,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import { useLiveAgentTracking } from "../hooks/useLiveAgentTracking";
-import { loadAgents } from "../services/domainApi";
+import { deleteAgent, loadAgents } from "../services/domainApi";
 import { ProfileAvatar } from "../components/common/ProfileAvatar";
+import { ConfirmationDialog } from "../components/common/OverlayComponents";
+import { useToast } from "../context/ToastContext";
 
 const formatAge = (value?: string) => {
   if (!value) return "No GPS update";
@@ -36,6 +39,9 @@ export const ManagerLiveTrackingPage: React.FC = () => {
   const { agents, connectionState } = useLiveAgentTracking(directoryAgents);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const { showToast } = useToast();
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? null;
 
@@ -56,6 +62,28 @@ export const ManagerLiveTrackingPage: React.FC = () => {
 
   const handleAgentSelect = (agent: Agent) => {
     setSelectedAgentId(agent.id);
+  };
+
+  const handleDeleteAgent = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteAgent(pendingDelete.id);
+      setDirectoryAgents((current) =>
+        current.filter((agent) => agent.id !== pendingDelete.id),
+      );
+      if (selectedAgentId === pendingDelete.id) setSelectedAgentId(null);
+      showToast("Agent removed", `${pendingDelete.name} was removed from the live directory.`, "success");
+      setPendingDelete(null);
+    } catch (error) {
+      showToast(
+        "Unable to remove agent",
+        error instanceof Error ? error.message : "Please try again.",
+        "error",
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const filteredAgents = agents.filter(
@@ -132,38 +160,52 @@ export const ManagerLiveTrackingPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {(agent.trackingStatus === "location_off" ||
-                        agent.trackingStatus === "idle_1h") && (
-                        <Badge status={agent.trackingStatus} />
-                      )}
-                      <Badge status={agent.presenceStatus ?? "OFFLINE"} />
-                      <Badge status={agent.shiftStatus ?? "OFF_SHIFT"} />
-                      <Badge status={agent.gpsStatus ?? "UNAVAILABLE"} />
+                  <div className="flex items-start gap-2">
+                    <div className="text-right">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {(agent.trackingStatus === "location_off" ||
+                          agent.trackingStatus === "idle_1h") && (
+                          <Badge status={agent.trackingStatus} />
+                        )}
+                        <Badge status={agent.presenceStatus ?? "OFFLINE"} />
+                        <Badge status={agent.shiftStatus ?? "OFF_SHIFT"} />
+                        <Badge status={agent.gpsStatus ?? "UNAVAILABLE"} />
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {formatAge(agent.lastUpdatedAt)}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {agent.gpsAccuracyMeters == null
+                          ? "Accuracy —"
+                          : `Accuracy ±${Math.round(agent.gpsAccuracyMeters)} m`}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {formatMetric(agent.speedKmH, 1)} km/h · Battery{" "}
+                        {Number.isFinite(Number(agent.batteryLevel))
+                          ? agent.batteryLevel
+                          : "—"}
+                        %
+                      </p>
+                      <p className="text-xs font-extrabold text-cyan-400 mt-1">
+                        {formatMetric(agent.distanceKm, 2)} KM
+                      </p>
+                      <p className="max-w-40 truncate text-[10px] text-slate-500">
+                        {agent.destination?.label ?? "No destination"} · ETA{" "}
+                        {agent.etaMinutes ?? "—"} min
+                      </p>
                     </div>
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {formatAge(agent.lastUpdatedAt)}
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      {agent.gpsAccuracyMeters == null
-                        ? "Accuracy —"
-                        : `Accuracy ±${Math.round(agent.gpsAccuracyMeters)} m`}
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      {formatMetric(agent.speedKmH, 1)} km/h · Battery{" "}
-                      {Number.isFinite(Number(agent.batteryLevel))
-                        ? agent.batteryLevel
-                        : "—"}
-                      %
-                    </p>
-                    <p className="text-xs font-extrabold text-cyan-400 mt-1">
-                      {formatMetric(agent.distanceKm, 2)} KM
-                    </p>
-                    <p className="max-w-40 truncate text-[10px] text-slate-500">
-                      {agent.destination?.label ?? "No destination"} · ETA{" "}
-                      {agent.etaMinutes ?? "—"} min
-                    </p>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPendingDelete(agent);
+                      }}
+                      aria-label={`Remove ${agent.name}`}
+                      title="Remove agent"
+                      className="rounded-lg p-1.5 text-slate-500 transition hover:bg-rose-500/15 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -253,6 +295,16 @@ export const ManagerLiveTrackingPage: React.FC = () => {
           )}
         </div>
       </div>
+      <ConfirmationDialog
+        isOpen={Boolean(pendingDelete)}
+        onClose={() => !deleting && setPendingDelete(null)}
+        onConfirm={handleDeleteAgent}
+        title="Remove agent from directory?"
+        description={`${pendingDelete?.name ?? "This agent"} will no longer be able to sign in or appear in live tracking. Their existing sales and attendance records will be retained.`}
+        confirmLabel="Remove agent"
+        busy={deleting}
+        destructive
+      />
     </ManagerLayout>
   );
 };

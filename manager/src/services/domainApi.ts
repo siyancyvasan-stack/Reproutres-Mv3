@@ -137,6 +137,9 @@ export const createAgent = async (input: {
   body: JSON.stringify(input),
 }));
 
+export const deleteAgent = (agentId: string) =>
+  apiRequest<void>(`/api/v1/agents/${agentId}`, { method: 'DELETE' });
+
 export const uploadAgentAvatar = async (agentId: string, file: File) => {
   const form = new FormData();
   form.append('avatar', file);

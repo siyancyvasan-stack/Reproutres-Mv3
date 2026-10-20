@@ -5,11 +5,13 @@ import { ExportButton } from "../components/common/ExportButton";
 import { GlassCard } from "../components/common/GlassCard";
 import { Badge } from "../components/common/Badge";
 import { Modal } from "../components/common/Modal";
+import { ConfirmationDialog } from "../components/common/OverlayComponents";
 import { Agent } from "../types";
 import { useToast } from "../context/ToastContext";
 import {
   assignAgentDestination,
   createAgent,
+  deleteAgent,
   loadAgents,
 } from "../services/domainApi";
 import { DestinationLocationPicker } from "../components/map/DestinationLocationPicker";
@@ -37,6 +39,7 @@ import {
   Check,
   Camera,
   MessageCircle,
+  Trash2,
 } from "lucide-react";
 
 export const ManagerAgentsPage: React.FC = () => {
@@ -52,6 +55,8 @@ export const ManagerAgentsPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [destinationAgent, setDestinationAgent] = useState<Agent | null>(null);
   const [avatarAgent, setAvatarAgent] = useState<Agent | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [shopName, setShopName] = useState("");
   const [shopAddress, setShopAddress] = useState("");
   const [destinationLatitude, setDestinationLatitude] = useState("");
@@ -112,6 +117,37 @@ export const ManagerAgentsPage: React.FC = () => {
     const matchesStatus = statusFilter === "All" || ag.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const handleDeleteAgent = async () => {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteAgent(pendingDelete.id);
+      setAgents((current) =>
+        current.filter((agent) => agent.id !== pendingDelete.id),
+      );
+      setContactByAgent((current) => {
+        const remaining = { ...current };
+        delete remaining[pendingDelete.id];
+        return remaining;
+      });
+      setPendingDelete(null);
+      window.dispatchEvent(new Event("reproutes:agent-created"));
+      showToast(
+        "Agent removed",
+        `${pendingDelete.name} was removed from the agent roster.`,
+        "success",
+      );
+    } catch (error) {
+      showToast(
+        "Unable to remove agent",
+        error instanceof Error ? error.message : "Please try again.",
+        "error",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -388,7 +424,21 @@ export const ManagerAgentsPage: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <Badge status={agent.status} />
+                <div className="flex items-center gap-2">
+                  <Badge status={agent.status} />
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPendingDelete(agent);
+                    }}
+                    aria-label={`Remove ${agent.name}`}
+                    title="Remove agent"
+                    className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-500/15 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1.5 text-xs text-slate-300 border-t border-slate-800 pt-3">
@@ -630,6 +680,17 @@ export const ManagerAgentsPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      <ConfirmationDialog
+        isOpen={Boolean(pendingDelete)}
+        onClose={() => !isDeleting && setPendingDelete(null)}
+        onConfirm={handleDeleteAgent}
+        title="Remove agent from roster?"
+        description={`${pendingDelete?.name ?? "This agent"} will no longer be able to sign in or appear in agent lists. Existing sales and attendance history will be retained.`}
+        confirmLabel="Remove agent"
+        busy={isDeleting}
+        destructive
+      />
 
       {avatarAgent && (
         <AgentAvatarModal

@@ -21,8 +21,8 @@ agentRouter.get('/', authorize(Role.ADMIN, Role.MANAGER, Role.FACTORY_MANAGER), 
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const search = String(req.query.search ?? '');
     
-    let whereClause = 'tenantId = ? AND role = ?';
-    const params = [req.auth.tenantId, Role.AGENT];
+    let whereClause = 'tenantId = ? AND role = ? AND status = ?';
+    const params = [req.auth.tenantId, Role.AGENT, 'ACTIVE'];
     
     if (search) {
         whereClause += ' AND (name LIKE ? OR email LIKE ?)';
@@ -36,7 +36,8 @@ agentRouter.get('/', authorize(Role.ADMIN, Role.MANAGER, Role.FACTORY_MANAGER), 
     const itemsQuery = `
         SELECT u.id, u.name, u.email, u.employeeCode, u.avatarUrl, u.phone, u.region, u.status, p.id as p_id, p.routeAssigned, p.vehicleNo, p.shiftActive, p.status as p_status 
         FROM User u LEFT JOIN AgentProfile p ON u.id = p.userId 
-        WHERE u.${whereClause} ORDER BY u.name ASC LIMIT ? OFFSET ?
+        WHERE u.tenantId = ? AND u.role = ? AND u.status = ?${search ? ' AND (u.name LIKE ? OR u.email LIKE ?)' : ''}
+        ORDER BY u.name ASC LIMIT ? OFFSET ?
     `;
     const [rows] = await db.query(itemsQuery, [...params, limit, (page - 1) * limit]);
     
@@ -129,6 +130,42 @@ agentRouter.post('/', authorize(Role.ADMIN, Role.MANAGER), async (req, res) => {
         ...user,
         temporaryPassword: input.password ? undefined : temporaryPassword,
     });
+});
+
+// Removing an agent from the directory keeps their operational history intact,
+// while immediately preventing sign-in and live tracking.
+agentRouter.delete('/:id', authorize(Role.ADMIN, Role.MANAGER), async (req, res) => {
+    const agentId = String(req.params.id);
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+    try {
+        const [agents] = await connection.query(
+            'SELECT id, name FROM User WHERE id = ? AND tenantId = ? AND role = ? AND status = ? LIMIT 1 FOR UPDATE',
+            [agentId, req.auth.tenantId, Role.AGENT, 'ACTIVE']
+        );
+        const agent = agents[0];
+        if (!agent) {
+            await connection.rollback();
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Active agent not found' } });
+        }
+
+        await connection.query('UPDATE User SET status = ? WHERE id = ?', ['INACTIVE', agentId]);
+        await connection.query(
+            'UPDATE AgentProfile SET shiftActive = ?, status = ? WHERE userId = ?',
+            [false, 'OFFLINE', agentId]
+        );
+        await connection.query(
+            'INSERT INTO AuditLog (tenantId, actorId, action, entity, entityId, metadata, ipAddress) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [req.auth.tenantId, req.auth.sub, 'AGENT_REMOVED', 'User', agentId, JSON.stringify({ name: agent.name }), req.ip]
+        );
+        await connection.commit();
+        return res.status(204).send();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 });
 
 agentRouter.get('/me/activity', authorize(Role.AGENT), async (req, res) => {
