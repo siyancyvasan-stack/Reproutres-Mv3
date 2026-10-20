@@ -6,3 +6,11 @@ node_modules/
 dist/
 build/
 .git-backup/
+
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+**/dist/
+**/build/
+**/.git-backup/
