@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AgentLayout } from "../components/layout/AgentLayout";
 import { GlassCard } from "../components/common/GlassCard";
 import { useToast } from "../context/ToastContext";
-import { Store, Phone, MapPin, CheckCircle2, Navigation, X, LocateFixed } from "lucide-react";
+import { Store, Phone, MapPin, CheckCircle2, Navigation, X, LocateFixed, Camera } from "lucide-react";
 import { loadShops } from "../services/domainApi";
 import { capturePreciseGpsPoint } from "../services/deviceGps";
 import { ApiError, apiRequest } from "../services/apiClient";
@@ -359,11 +359,15 @@ const ShopRegistrationDrawer = ({
   const [errors, setErrors] = useState<Partial<Record<keyof ShopForm | "form", string>>>({});
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [shopPhoto, setShopPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setForm(blankForm);
       setErrors({});
+      setShopPhoto(null);
+      setPhotoPreview(null);
     }
   }, [open]);
 
@@ -394,9 +398,9 @@ const ShopRegistrationDrawer = ({
       x.alternateMobile = "Enter a valid alternate mobile number.";
     if (form.email && !emailRegex.test(form.email))
       x.email = "Enter a valid email address.";
-    if (!!form.latitude !== !!form.longitude)
-      x.latitude = "Enter both latitude and longitude.";
-    if (form.latitude && (Number(form.latitude) < -90 || Number(form.latitude) > 90))
+    if (!form.latitude || !form.longitude)
+      x.latitude = "Capture or enter both latitude and longitude.";
+    else if (Number(form.latitude) < -90 || Number(form.latitude) > 90)
       x.latitude = "Latitude must be between -90 and 90.";
     if (form.longitude && (Number(form.longitude) < -180 || Number(form.longitude) > 180))
       x.longitude = "Longitude must be between -180 and 180.";
@@ -427,13 +431,35 @@ const ShopRegistrationDrawer = ({
     }
   };
 
+  const selectShopPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setErrors((current) => ({ ...current, form: "Choose a JPG, PNG, or WebP shop photo." }));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors((current) => ({ ...current, form: "Shop photo must be 5 MB or smaller." }));
+      return;
+    }
+    setShopPhoto(file);
+    setErrors((current) => ({ ...current, form: undefined }));
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPreview(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    if (!shopPhoto) {
+      setErrors({ form: "Capture or upload a shop-front photo before registering." });
+      return;
+    }
     setSaving(true);
     setErrors({});
     try {
-      await apiRequest("/api/v1/shops", {
+      const createdShop = await apiRequest<{ id: string }>("/api/v1/shops", {
         method: "POST",
         body: JSON.stringify({
           name: form.name.trim(),
@@ -458,6 +484,14 @@ const ShopRegistrationDrawer = ({
           preferredVisitDays: [],
           paymentMethod: "CASH",
         }),
+      });
+      const image = new FormData();
+      image.append("image", shopPhoto);
+      image.append("type", "STOREFRONT");
+      image.append("isPrimary", "true");
+      await apiRequest(`/api/v1/shops/${createdShop.id}/images`, {
+        method: "POST",
+        body: image,
       });
       await saved();
     } catch (e) {
@@ -662,6 +696,33 @@ const ShopRegistrationDrawer = ({
               className="input w-full resize-y text-slate-900"
             />
           </label>
+          <div className="md:col-span-2 rounded-2xl border border-indigo-200/70 bg-indigo-50/50 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-base font-bold text-slate-900">Shop-front photo <span className="text-rose-500">*</span></p>
+                <p className="text-xs text-slate-600">Use the phone camera or choose a clear image of the shop. This will be visible to your manager.</p>
+              </div>
+              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-indigo-500">
+                <Camera className="h-4 w-4" />
+                {shopPhoto ? "Retake photo" : "Open camera"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  onChange={selectShopPhoto}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+            {photoPreview ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-indigo-200 bg-white">
+                <img src={photoPreview} alt="Shop-front preview" className="h-48 w-full object-cover" />
+                <p className="px-3 py-2 text-xs font-semibold text-slate-600">{shopPhoto?.name}</p>
+              </div>
+            ) : (
+              <p className="mt-4 rounded-xl border border-dashed border-indigo-300 bg-white/70 px-4 py-6 text-center text-xs font-semibold text-slate-500">No shop photo captured yet.</p>
+            )}
+          </div>
           <footer className="sticky bottom-0 z-10 md:col-span-2 -mx-5 -mb-5 mt-2 flex justify-end gap-3 border-t border-white/70 bg-white/82 px-5 py-4 backdrop-blur-xl sm:-mx-6 sm:-mb-6 sm:px-6">
             <button
               type="button"
