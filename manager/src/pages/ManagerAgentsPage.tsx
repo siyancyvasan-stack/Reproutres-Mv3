@@ -26,6 +26,7 @@ import { useAuth } from "../context/AuthContext";
 import { ProfileAvatar } from "../components/common/ProfileAvatar";
 import { AgentAvatarModal } from "../components/common/AgentAvatarModal";
 import { downloadAgents } from "../services/agentsExport";
+import { findSriLankanPlace } from "../services/placeSearch";
 import {
   Users,
   Search,
@@ -63,6 +64,8 @@ export const ManagerAgentsPage: React.FC = () => {
   const [destinationLongitude, setDestinationLongitude] = useState("");
   const [destinationError, setDestinationError] = useState("");
   const [isSavingDestination, setIsSavingDestination] = useState(false);
+  const [isFindingDestination, setIsFindingDestination] = useState(false);
+  const [destinationMatch, setDestinationMatch] = useState("");
   useEffect(() => {
     void loadContacts()
       .then(({ contacts }) =>
@@ -247,7 +250,39 @@ export const ManagerAgentsPage: React.FC = () => {
       agent.destination ? String(agent.destination.lng) : "",
     );
     setDestinationError("");
+    setDestinationMatch("");
   };
+
+  useEffect(() => {
+    if (!destinationAgent || shopAddress.trim().length < 3) return;
+    const controller = new AbortController();
+    const lookupTimer = window.setTimeout(() => {
+      setIsFindingDestination(true);
+      void findSriLankanPlace(shopAddress, controller.signal)
+        .then((place) => {
+          if (!place) {
+            setDestinationMatch("Location not found. You can select it on the map instead.");
+            return;
+          }
+          setDestinationLatitude(String(place.latitude));
+          setDestinationLongitude(String(place.longitude));
+          setDestinationMatch(`Location found: ${place.label}`);
+          setDestinationError("");
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          setDestinationMatch("Could not find this location automatically. Select it on the map instead.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsFindingDestination(false);
+        });
+    }, 700);
+    return () => {
+      window.clearTimeout(lookupTimer);
+      controller.abort();
+      setIsFindingDestination(false);
+    };
+  }, [destinationAgent, shopAddress]);
 
   const handleSaveDestination = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -764,10 +799,18 @@ export const ManagerAgentsPage: React.FC = () => {
             <input
               required
               value={shopAddress}
-              onChange={(event) => setShopAddress(event.target.value)}
-              placeholder="Enter complete shop address"
+              onChange={(event) => {
+                setShopAddress(event.target.value);
+                setDestinationMatch("");
+              }}
+              placeholder="Type place or complete shop address"
               className="h-11 w-full rounded-[10px] border border-slate-300 bg-white px-4 text-xs text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
+            <p className="mt-1.5 text-[10px] text-slate-500" aria-live="polite">
+              {isFindingDestination
+                ? "Finding location and coordinates…"
+                : destinationMatch || "Type an address to fill latitude and longitude automatically."}
+            </p>
           </div>
           <DestinationLocationPicker
             latitude={
