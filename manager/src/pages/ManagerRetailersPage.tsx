@@ -115,6 +115,11 @@ export const ManagerRetailersPage = ({
     if (view !== "add") void load(1);
   }, [load, view]);
   useEffect(() => {
+    const refresh = () => { if (view !== "add") void load(page); };
+    window.addEventListener("reproutes:notifications-changed", refresh);
+    return () => window.removeEventListener("reproutes:notifications-changed", refresh);
+  }, [load, page, view]);
+  useEffect(() => {
     if (portal === "manager")
       void loadAgents([])
         .then(setAgents)
@@ -557,14 +562,14 @@ const AddDrawer = ({
   };
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6"
       onMouseDown={(e) => e.target === e.currentTarget && !saving && close()}
     >
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-title"
-        className="h-full w-full max-w-3xl overflow-y-auto bg-white shadow-2xl"
+        className="my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]"
       >
         <header className="sticky top-0 z-10 flex justify-between border-b bg-white/95 px-6 py-5 backdrop-blur">
           <div>
@@ -587,7 +592,7 @@ const AddDrawer = ({
             <X className="h-5" />
           </button>
         </header>
-        <form onSubmit={submit} className="grid gap-5 p-6 md:grid-cols-2">
+        <form onSubmit={submit} className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 sm:p-6 md:grid-cols-2">
           {errors.form && (
             <div
               role="alert"
@@ -751,7 +756,7 @@ const AddDrawer = ({
               className="input w-full resize-y text-slate-900"
             />
           </label>
-          <footer className="sticky bottom-0 md:col-span-2 -mx-6 -mb-6 mt-2 flex justify-end gap-3 border-t bg-white px-6 py-4">
+          <footer className="sticky bottom-0 md:col-span-2 -mx-5 -mb-5 mt-2 flex justify-end gap-3 border-t bg-white px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
             <button
               type="button"
               disabled={saving}
@@ -806,10 +811,10 @@ const Input = ({
 const Summary = ({ retailer, close }: { retailer?: Row; close: () => void }) =>
   !retailer ? null : (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-950/70"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6"
       onMouseDown={(e) => e.target === e.currentTarget && close()}
     >
-      <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl">
+      <aside className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:p-6">
         <div className="flex justify-between">
           <div>
             <p className="text-xs font-bold text-indigo-600">

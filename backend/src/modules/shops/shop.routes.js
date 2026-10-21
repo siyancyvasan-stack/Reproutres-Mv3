@@ -44,27 +44,27 @@ const shopInput = z.object({
     shopRequirements: z.string().max(2000).optional(), salesNotes: z.string().max(2000).optional(),
 });
 
-const auditRetailer = async (tenantId, actorId, action, shopId, metadata) => {
-    const id = randomUUID();
-    await db.query(
-        'INSERT INTO AuditLog (tenantId, actorId, action, entity, entityId, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [id, tenantId, actorId, action, 'Retailer', shopId, metadata ? JSON.stringify(metadata) : null]
+const auditRetailer = async (tenantId, actorId, action, shopId, metadata, connection = db) => {
+    await connection.query(
+        'INSERT INTO AuditLog (tenantId, actorId, action, entity, entityId, metadata) VALUES (?, ?, ?, ?, ?, ?)',
+        [tenantId, actorId, action, 'Retailer', shopId, metadata ? JSON.stringify(metadata) : null]
     );
 };
 
 const haversine = (aLat, aLng, bLat, bLng) => { const r = 6371000; const rad = (v) => v * Math.PI / 180; const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng); const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2; return 2 * r * Math.asin(Math.sqrt(x)); };
 const salesVisibilityRoles = [Role.ADMIN, Role.MANAGER, Role.FACTORY_MANAGER];
 
-const notifySalesVisibility = async (req, type, title, message, event, payload) => {
-    const [recipients] = await db.query(
+const notifySalesVisibility = async (req, type, title, message, event, payload, connection = db, emit = true) => {
+    const [recipients] = await connection.query(
         'SELECT id FROM User WHERE tenantId = ? AND role IN (?, ?, ?) AND status = ?',
         [req.auth.tenantId, Role.ADMIN, Role.MANAGER, Role.FACTORY_MANAGER, 'ACTIVE']
     );
     if (recipients.length) {
-        const values = recipients.map(r => `(UUID(), '${req.auth.tenantId}', '${r.id}', '${type}', '${title.replace(/'/g, "''")}', '${message.replace(/'/g, "''")}')`).join(',');
-        await db.query(`INSERT INTO Notification (id, tenantId, userId, type, title, message) VALUES ${values}`);
+        const placeholders = recipients.map(() => '(UUID(), ?, ?, ?, ?, ?)').join(',');
+        const values = recipients.flatMap(r => [req.auth.tenantId, r.id, type, title, message]);
+        await connection.query(`INSERT INTO Notification (id, tenantId, userId, type, title, message) VALUES ${placeholders}`, values);
     }
-    req.app.get('io')?.to(`tenant:${req.auth.tenantId}:role:${Role.ADMIN}`).to(`tenant:${req.auth.tenantId}:role:${Role.MANAGER}`).to(`tenant:${req.auth.tenantId}:role:${Role.FACTORY_MANAGER}`).emit(event, payload);
+    if (emit) req.app.get('io')?.to(`tenant:${req.auth.tenantId}:role:${Role.ADMIN}`).to(`tenant:${req.auth.tenantId}:role:${Role.MANAGER}`).to(`tenant:${req.auth.tenantId}:role:${Role.FACTORY_MANAGER}`).emit(event, payload);
 };
 
 const createFileAsset = async (tenantId, uploadedById, stored, tx) => {
@@ -220,20 +220,37 @@ shopRouter.post('/', authorize(Role.ADMIN, Role.MANAGER, Role.AGENT), async (req
         country: input.country, territory: input.territory ?? null, shopCategory: input.shopCategory ?? null, retailerType: input.retailerType ?? null,
         gpsAccuracy: input.gpsAccuracy ?? null, gpsCapturedAt: input.gpsCapturedAt ? new Date(input.gpsCapturedAt) : null, productCategories: JSON.stringify(input.productCategories),
         expectedMonthlyPurchase: input.expectedMonthlyPurchase, currentSupplier: input.currentSupplier ?? null, deliveryPreference: input.deliveryPreference ?? null, preferredVisitDays: JSON.stringify(input.preferredVisitDays),
-        shopRequirements: input.shopRequirements ?? null, salesNotes: input.salesNotes ?? null, createdAt: new Date()
+        shopRequirements: input.shopRequirements ?? null, salesNotes: input.salesNotes ?? null, createdAt: new Date(), updatedAt: new Date()
     };
     
     const keys = Object.keys(shopData);
     const placeholders = keys.map(() => '?').join(',');
     const values = keys.map(k => shopData[k]);
     
-    await db.query(`INSERT INTO Shop (${keys.join(',')}) VALUES (${placeholders})`, values);
-    
-    const [createdShops] = await db.query('SELECT * FROM Shop WHERE id = ?', [shopId]);
-    const shop = createdShops[0];
-    
-    await auditRetailer(req.auth.tenantId, req.auth.sub, 'RETAILER_CREATED', shop.id, { role: req.auth.role });
-    await notifySalesVisibility(req, 'NEW_RETAILER', 'New retailer added', `${shop.name} was added to the sales network.`, 'sales:new-retailer', shop);
+    const connection = await db.getConnection();
+    let shop;
+    try {
+        await connection.beginTransaction();
+        await connection.query(`INSERT INTO Shop (${keys.join(',')}) VALUES (${placeholders})`, values);
+        const [createdShops] = await connection.query('SELECT * FROM Shop WHERE id = ?', [shopId]);
+        shop = createdShops[0];
+        await auditRetailer(req.auth.tenantId, req.auth.sub, 'RETAILER_CREATED', shop.id, { role: req.auth.role }, connection);
+        await notifySalesVisibility(req, 'NEW_RETAILER', 'New retailer added', `${shop.name} was added to the sales network.`, 'sales:new-retailer', shop, connection, false);
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+    const io = req.app.get('io');
+    io?.to(`tenant:${req.auth.tenantId}:role:${Role.ADMIN}`).to(`tenant:${req.auth.tenantId}:role:${Role.MANAGER}`).to(`tenant:${req.auth.tenantId}:role:${Role.FACTORY_MANAGER}`).emit('sales:new-retailer', shop);
+    io?.to(`tenant:${req.auth.tenantId}:role:${Role.ADMIN}`).to(`tenant:${req.auth.tenantId}:role:${Role.MANAGER}`).to(`tenant:${req.auth.tenantId}:role:${Role.FACTORY_MANAGER}`).emit('notification:created', {
+        type: 'NEW_RETAILER',
+        title: 'New shop registered',
+        message: `${shop.name} was added to the sales network.`,
+        shopId: shop.id,
+    });
     res.status(201).json(shop);
 });
 

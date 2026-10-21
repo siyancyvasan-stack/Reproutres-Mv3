@@ -140,6 +140,9 @@ export const createAgent = async (input: {
 export const deleteAgent = (agentId: string) =>
   apiRequest<void>(`/api/v1/agents/${agentId}`, { method: 'DELETE' });
 
+export const updateAgent = (agentId: string, input: Omit<Parameters<typeof createAgent>[0], 'password'> & { password?: string }) =>
+  apiRequest<any>(`/api/v1/agents/${agentId}`, { method: 'PATCH', body: JSON.stringify(input) });
+
 export const uploadAgentAvatar = async (agentId: string, file: File) => {
   const form = new FormData();
   form.append('avatar', file);
@@ -206,6 +209,8 @@ const toShop = (item: any): Shop => ({
   name: item.name,
   ownerName: item.ownerName,
   phone: item.phone,
+  alternateMobile: item.alternateMobile ?? undefined,
+  email: item.email ?? undefined,
   address: item.address,
   city: item.city,
   coordinates: { lat: item.latitude ?? Number.NaN, lng: item.longitude ?? Number.NaN },
@@ -216,6 +221,7 @@ const toShop = (item: any): Shop => ({
   lastVisitAt: item.lastVisitAt,
   visitedToday: Boolean(item.lastVisitAt && new Date(item.lastVisitAt).toDateString() === new Date().toDateString()),
   outstandingBalanceLkr: Number(item.outstandingBalanceLkr),
+  paymentTerms: item.paymentTerms ?? undefined,
   images: item.images ?? [],
   primaryImageUrl: item.images?.find((image: any) => image.isPrimary)?.url ?? item.images?.[0]?.url,
 });

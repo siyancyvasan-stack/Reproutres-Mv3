@@ -53,6 +53,8 @@ export interface Agent {
   batteryLevel: number;
   speedKmH: number;
   phone: string;
+  alternateMobile?: string;
+  email?: string;
   vehicleNo: string;
   routeAssigned: string;
   todayRevenueLkr: number;
@@ -164,6 +166,7 @@ export interface Shop {
   visitedToday: boolean;
   lastOrderDate?: string;
   outstandingBalanceLkr: number;
+  paymentTerms?: string;
   images?: ShopImage[];
   primaryImageUrl?: string;
 }

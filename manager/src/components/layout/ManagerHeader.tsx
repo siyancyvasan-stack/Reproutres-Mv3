@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileAvatar } from '../common/ProfileAvatar';
 import { ManagerSearchResults, searchManagerRecords } from '../../services/managerSearchApi';
-import { apiRequest } from '../../services/apiClient';
+import { apiRequest, ensureAccessToken } from '../../services/apiClient';
+import { io } from 'socket.io-client';
 import {
   Menu,
   Search,
@@ -40,7 +41,26 @@ export const ManagerHeader: React.FC<ManagerHeaderProps> = ({ onToggleMobileSide
   useEffect(() => {
     loadNotifications();
     window.addEventListener('reproutes:notifications-changed', loadNotifications);
-    return () => window.removeEventListener('reproutes:notifications-changed', loadNotifications);
+    let socket: ReturnType<typeof io> | undefined;
+    let disposed = false;
+    void ensureAccessToken().then((token) => {
+      if (disposed) return;
+      const configured = (import.meta.env.VITE_TRACKING_SOCKET_URL as string | undefined)?.trim();
+      socket = io(configured && configured !== 'same-origin' ? configured : undefined, {
+        transports: ['websocket'],
+        withCredentials: true,
+        auth: { token },
+      });
+      socket.on('notification:created', () => {
+        loadNotifications();
+        window.dispatchEvent(new Event('reproutes:notifications-changed'));
+      });
+    }).catch(() => undefined);
+    return () => {
+      disposed = true;
+      socket?.disconnect();
+      window.removeEventListener('reproutes:notifications-changed', loadNotifications);
+    };
   }, [loadNotifications]);
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;

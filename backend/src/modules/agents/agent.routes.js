@@ -132,6 +132,29 @@ agentRouter.post('/', authorize(Role.ADMIN, Role.MANAGER), async (req, res) => {
     });
 });
 
+agentRouter.patch('/:id', authorize(Role.ADMIN, Role.MANAGER), async (req, res) => {
+    const input = z.object({
+        name: z.string().min(2), email: z.string().email(), employeeCode: z.string().min(2),
+        phone: z.string().optional(), routeAssigned: z.string().optional(), vehicleNo: z.string().optional(),
+        password: z.string().min(8).optional(),
+    }).parse(req.body);
+    const agentId = String(req.params.id);
+    const email = input.email.trim().toLowerCase();
+    const [conflicts] = await db.query('SELECT id FROM User WHERE tenantId = ? AND (email = ? OR employeeCode = ?) AND id <> ? LIMIT 1', [req.auth.tenantId, email, input.employeeCode.trim(), agentId]);
+    if (conflicts.length) return res.status(409).json({ error: { code: 'AGENT_DETAILS_ALREADY_EXISTS', message: 'Email or employee code is already used by another agent.' } });
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [result] = await connection.query('UPDATE User SET name = ?, email = ?, employeeCode = ?, phone = ? WHERE id = ? AND tenantId = ? AND role = ? AND status = ?', [input.name.trim(), email, input.employeeCode.trim(), input.phone?.trim() || null, agentId, req.auth.tenantId, Role.AGENT, 'ACTIVE']);
+        if (!result.affectedRows) { await connection.rollback(); return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Active agent not found.' } }); }
+        await connection.query('UPDATE AgentProfile SET routeAssigned = ?, vehicleNo = ? WHERE userId = ?', [input.routeAssigned?.trim() || null, input.vehicleNo?.trim() || null, agentId]);
+        if (input.password) await connection.query('UPDATE User SET passwordHash = ? WHERE id = ?', [await hashPassword(input.password), agentId]);
+        await connection.commit();
+    } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
+    const [rows] = await db.query('SELECT u.*, p.routeAssigned, p.vehicleNo, p.shiftActive, p.status as p_status FROM User u LEFT JOIN AgentProfile p ON u.id = p.userId WHERE u.id = ?', [agentId]);
+    return res.json(rows[0]);
+});
+
 // Removing an agent from the directory keeps their operational history intact,
 // while immediately preventing sign-in and live tracking.
 agentRouter.delete('/:id', authorize(Role.ADMIN, Role.MANAGER), async (req, res) => {

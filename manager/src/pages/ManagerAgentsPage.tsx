@@ -12,10 +12,11 @@ import {
   assignAgentDestination,
   createAgent,
   deleteAgent,
+  updateAgent,
   loadAgents,
 } from "../services/domainApi";
 import { DestinationLocationPicker } from "../components/map/DestinationLocationPicker";
-import { ApiError } from "../services/apiClient";
+import { ApiError, apiRequest } from "../services/apiClient";
 import {
   Contact,
   callUrl,
@@ -41,6 +42,7 @@ import {
   Camera,
   MessageCircle,
   Trash2,
+  Pencil,
 } from "lucide-react";
 
 export const ManagerAgentsPage: React.FC = () => {
@@ -54,6 +56,7 @@ export const ManagerAgentsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [destinationAgent, setDestinationAgent] = useState<Agent | null>(null);
   const [avatarAgent, setAvatarAgent] = useState<Agent | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
@@ -66,6 +69,8 @@ export const ManagerAgentsPage: React.FC = () => {
   const [isSavingDestination, setIsSavingDestination] = useState(false);
   const [isFindingDestination, setIsFindingDestination] = useState(false);
   const [destinationMatch, setDestinationMatch] = useState("");
+  const [agentShops, setAgentShops] = useState<Array<Record<string, any>>>([]);
+  const [selectedShopId, setSelectedShopId] = useState("");
   useEffect(() => {
     void loadContacts()
       .then(({ contacts }) =>
@@ -157,7 +162,7 @@ export const ManagerAgentsPage: React.FC = () => {
     if (!newName.trim() || !newEmail.trim()) return;
     const normalizedEmail = newEmail.trim().toLowerCase();
     const duplicateEmail = agents.some(
-      (agent) => agent.email.toLowerCase() === normalizedEmail,
+      (agent) => agent.id !== editingAgent?.id && agent.email.toLowerCase() === normalizedEmail,
     );
     if (duplicateEmail) {
       const emailName =
@@ -173,7 +178,7 @@ export const ManagerAgentsPage: React.FC = () => {
     }
     let normalizedEmployeeCode = newEmployeeCode.trim().toUpperCase();
     const duplicateEmployeeCode = agents.some(
-      (agent) => agent.employeeCode.toUpperCase() === normalizedEmployeeCode,
+      (agent) => agent.id !== editingAgent?.id && agent.employeeCode.toUpperCase() === normalizedEmployeeCode,
     );
     if (normalizedEmployeeCode && duplicateEmployeeCode) {
       const nextEmployeeCode = getNextEmployeeCode(agents);
@@ -183,15 +188,17 @@ export const ManagerAgentsPage: React.FC = () => {
     setFormError("");
     setIsCreating(true);
     try {
-      await createAgent({
+      const payload = {
         name: newName.trim(),
         email: normalizedEmail,
-        password: newPassword || "Agent@123",
+        ...(editingAgent ? (newPassword ? { password: newPassword } : {}) : { password: newPassword || "Agent@123" }),
         employeeCode: normalizedEmployeeCode || getNextEmployeeCode(agents),
         phone: newPhone.trim() || undefined,
         routeAssigned: newRoute,
         vehicleNo: newVehicleNo.trim() || undefined,
-      });
+      };
+      if (editingAgent) await updateAgent(editingAgent.id, payload);
+      else await createAgent({ ...payload, password: newPassword || "Agent@123" });
       const storedAgents = await loadAgents([]);
       const newAgent = storedAgents.find(
         (agent) => agent.email === normalizedEmail,
@@ -203,6 +210,7 @@ export const ManagerAgentsPage: React.FC = () => {
       setAgents(storedAgents);
       window.dispatchEvent(new Event("reproutes:agent-created"));
       setIsAddModalOpen(false);
+      setEditingAgent(null);
       setNewName("");
       setNewEmail("");
       setNewPhone("");
@@ -210,11 +218,7 @@ export const ManagerAgentsPage: React.FC = () => {
       setNewEmployeeCode(getNextEmployeeCode(storedAgents));
       setNewVehicleNo("");
       setFormError("");
-      showToast(
-        "New Agent Added",
-        `${newAgent.name} can now sign in with ${newAgent.email}. They will appear online after GPS permission is granted.`,
-        "success",
-      );
+      showToast(editingAgent ? "Agent Updated" : "New Agent Added", editingAgent ? `${newName} details updated successfully.` : `${newAgent.name} can now sign in with ${newAgent.email}.`, "success");
     } catch (error) {
       const nextEmployeeCode = getNextEmployeeCode(agents);
       if (
@@ -239,6 +243,19 @@ export const ManagerAgentsPage: React.FC = () => {
     }
   };
 
+  const openEditAgent = (agent: Agent) => {
+    setEditingAgent(agent);
+    setNewName(agent.name);
+    setNewEmail(agent.email);
+    setNewPhone(agent.phone ?? "");
+    setNewEmployeeCode(agent.employeeCode);
+    setNewVehicleNo(agent.vehicleNo ?? "");
+    setNewRoute(agent.routeAssigned ?? "");
+    setNewPassword("");
+    setFormError("");
+    setIsAddModalOpen(true);
+  };
+
   const openDestinationModal = (agent: Agent) => {
     setDestinationAgent(agent);
     setShopName(agent.destination?.label ?? "");
@@ -251,6 +268,34 @@ export const ManagerAgentsPage: React.FC = () => {
     );
     setDestinationError("");
     setDestinationMatch("");
+    setSelectedShopId("");
+    void apiRequest<any>(`/api/v1/shops?limit=100&salespersonId=${encodeURIComponent(agent.id)}`)
+      .then((result) => {
+        const shops = result.items ?? [];
+        setAgentShops(shops);
+        if (shops.length === 1) {
+          const shop = shops[0];
+          setSelectedShopId(shop.id);
+          setShopName(shop.name ?? "");
+          setShopAddress(shop.address ?? shop.city ?? "");
+          setDestinationLatitude(shop.latitude == null ? "" : String(shop.latitude));
+          setDestinationLongitude(shop.longitude == null ? "" : String(shop.longitude));
+          setDestinationMatch("Registered shop details loaded automatically.");
+        }
+      })
+      .catch(() => setAgentShops([]));
+  };
+
+  const selectRegisteredShop = (shopId: string) => {
+    setSelectedShopId(shopId);
+    const shop = agentShops.find((item) => item.id === shopId);
+    if (!shop) return;
+    setShopName(shop.name ?? "");
+    setShopAddress(shop.address ?? shop.city ?? "");
+    setDestinationLatitude(shop.latitude == null ? "" : String(shop.latitude));
+    setDestinationLongitude(shop.longitude == null ? "" : String(shop.longitude));
+    setDestinationMatch("Registered shop details loaded automatically.");
+    setDestinationError("");
   };
 
   useEffect(() => {
@@ -367,6 +412,10 @@ export const ManagerAgentsPage: React.FC = () => {
           />
           <button
             onClick={() => {
+              setEditingAgent(null);
+              setNewName("");
+              setNewEmail("");
+              setNewPhone("");
               setNewEmployeeCode(getNextEmployeeCode(agents));
               setNewPassword("Agent@123");
               setFormError("");
@@ -461,6 +510,7 @@ export const ManagerAgentsPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge status={agent.status} />
+                  <button type="button" onClick={(event) => { event.stopPropagation(); openEditAgent(agent); }} aria-label={`Edit ${agent.name}`} title="Edit agent" className="rounded-lg p-2 text-slate-400 transition hover:bg-cyan-500/15 hover:text-cyan-300"><Pencil className="h-4 w-4" /></button>
                   <button
                     type="button"
                     onClick={(event) => {
@@ -572,7 +622,7 @@ export const ManagerAgentsPage: React.FC = () => {
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Add New Field Sales Agent"
+        title={editingAgent ? "Edit Field Sales Agent" : "Add New Field Sales Agent"}
         stickyActions
         scrollControls
       >
@@ -641,7 +691,7 @@ export const ManagerAgentsPage: React.FC = () => {
                 minLength={8}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
+                placeholder={editingAgent ? "Leave blank to keep current password" : "Minimum 8 characters"}
                 className="w-full px-4 py-2.5 text-xs rounded-xl glass-input"
               />
             </div>
@@ -781,6 +831,24 @@ export const ManagerAgentsPage: React.FC = () => {
           className="space-y-4 pb-2"
         >
           <div>
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-900">
+              Registered Shop
+            </label>
+            <select
+              value={selectedShopId}
+              onChange={(event) => selectRegisteredShop(event.target.value)}
+              className="mb-3 h-11 w-full rounded-[10px] border border-indigo-200 bg-indigo-50 px-4 text-xs text-slate-900 focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="">Select a shop registered by this salesperson</option>
+              {agentShops.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.name} — {shop.city}
+                </option>
+              ))}
+            </select>
+            {!agentShops.length && (
+              <p className="mb-3 text-[11px] text-slate-500">No registered shops found for this salesperson yet.</p>
+            )}
             <label className="mb-1 block text-xs font-semibold uppercase text-slate-900">
               Shop Name
             </label>
