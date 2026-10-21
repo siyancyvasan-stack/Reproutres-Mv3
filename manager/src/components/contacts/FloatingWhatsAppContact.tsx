@@ -126,7 +126,7 @@ export const FloatingWhatsAppContact: React.FC<{ aboveMobileNav?: boolean }> = (
           <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-3">
             {loading && <div className="grid min-h-28 place-items-center text-emerald-600"><Loader2 className="h-6 w-6 animate-spin" /></div>}
             {!loading && error && <div className="rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700"><p>{error}</p><button type="button" onClick={() => void (isSalesPerson ? loadSalesDestination() : refresh())} className="mt-2 font-extrabold underline">Try again</button></div>}
-            {!loading && !error && contacts.length === 0 && <div className="p-5 text-center text-slate-500"><UserRoundX className="mx-auto mb-2 h-7 w-7"/><p className="text-xs font-semibold">No authorized WhatsApp contacts are available.</p></div>}
+            {!loading && !error && contacts.length === 0 && <div className="p-5 text-center text-slate-500"><UserRoundX className="mx-auto mb-2 h-7 w-7" /><p className="text-xs font-semibold">No authorized WhatsApp contacts are available.</p></div>}
             {!loading && !error && contacts.map((contact) => (
               <div key={`${contact.assignmentType}-${contact.id}`} className="mb-2 last:mb-0">
                 {contact.whatsappNumber ? (

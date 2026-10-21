@@ -69,8 +69,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ portal }) => {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const url = import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, '/health/live');
-        const res = await fetch(url);
+        const configuredUrl = import.meta.env.VITE_API_URL?.trim() || 'same-origin';
+        const apiBase = configuredUrl === 'same-origin'
+          ? ''
+          : configuredUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
+        const res = await fetch(`${apiBase}/health/live`, {
+          signal: AbortSignal.timeout(10_000),
+        });
         setDbConnected(res.ok);
       } catch (err) {
         setDbConnected(false);
