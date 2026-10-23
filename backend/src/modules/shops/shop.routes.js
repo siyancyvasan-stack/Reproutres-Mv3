@@ -52,6 +52,7 @@ const auditRetailer = async (tenantId, actorId, action, shopId, metadata, connec
 };
 
 const haversine = (aLat, aLng, bLat, bLng) => { const r = 6371000; const rad = (v) => v * Math.PI / 180; const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng); const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2; return 2 * r * Math.asin(Math.sqrt(x)); };
+const canonicalPhone = (value) => String(value ?? '').replace(/\D/g, '');
 const salesVisibilityRoles = [Role.ADMIN, Role.MANAGER, Role.FACTORY_MANAGER];
 
 const notifySalesVisibility = async (req, type, title, message, event, payload, connection = db, emit = true) => {
@@ -194,7 +195,15 @@ shopRouter.post('/', authorize(Role.ADMIN, Role.MANAGER, Role.AGENT), async (req
     dupQuery += dupConditions.join(' OR ') + ') LIMIT 1';
     
     const [duplicates] = await db.query(dupQuery, dupParams);
-    const duplicate = duplicates[0];
+    const inputPhone = canonicalPhone(input.phone);
+    const inputAlternate = canonicalPhone(input.alternateMobile);
+    const duplicate = duplicates.find((candidate) => {
+        const candidatePhone = canonicalPhone(candidate.phone);
+        const candidateAlternate = canonicalPhone(candidate.alternateMobile);
+        return (inputPhone && (candidatePhone === inputPhone || candidateAlternate === inputPhone))
+            || (inputAlternate && (candidatePhone === inputAlternate || candidateAlternate === inputAlternate))
+            || candidate.name.trim().toLowerCase() === input.name.trim().toLowerCase();
+    });
     
     if (duplicate) {
         res.status(409).json({ error: { code: 'DUPLICATE_RETAILER', details: { id: duplicate.id, name: duplicate.name, matchingNic: duplicate.nicNumber === input.nicNumber, matchingBr: Boolean(input.brNumber && duplicate.brNumber === input.brNumber), matchingPhone: duplicate.phone === input.phone } } });

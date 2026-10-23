@@ -722,6 +722,9 @@ export const ManagerOrdersPage: React.FC = () => {
                 </h4>
                 <Badge status={selectedOrder.status} />
               </div>
+              <p className="text-xs text-cyan-300 font-semibold">
+                Order ID: {selectedOrder.id}
+              </p>
               <p className="text-xs text-slate-400">
                 {selectedOrder.shopAddress}
               </p>

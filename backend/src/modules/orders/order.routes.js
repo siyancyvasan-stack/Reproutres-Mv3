@@ -205,8 +205,8 @@ orderRouter.patch('/:id/status', authorize(Role.ADMIN, Role.MANAGER), async (req
     
     if (updated && status === OrderStatus.APPROVED) {
         await db.query(
-            'INSERT INTO Notification (id, tenantId, type, title, message) VALUES (?, ?, ?, ?)',
-            [req.auth.tenantId, 'ORDER_APPROVED', 'Order approved', `${updated.id} is ready for factory review`]
+            'INSERT INTO Notification (id, tenantId, type, title, message) VALUES (?, ?, ?, ?, ?)',
+            [randomUUID(), req.auth.tenantId, 'ORDER_APPROVED', 'Order approved', `${updated.id} is ready for factory review`]
         );
         req.app.get('io')?.to(`tenant:${req.auth.tenantId}:role:${Role.FACTORY_MANAGER}`).emit('factory:order-approved', updated);
     }
