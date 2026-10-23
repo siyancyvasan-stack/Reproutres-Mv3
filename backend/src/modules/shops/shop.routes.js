@@ -207,7 +207,11 @@ shopRouter.post('/', authorize(Role.ADMIN, Role.MANAGER, Role.AGENT), async (req
     
     const shopId = randomUUID();
     const assignedSalespersonId = req.auth.role === Role.AGENT ? req.auth.sub : input.assignedSalespersonId;
-    const status = req.auth.role === Role.AGENT ? RetailerStatus.DRAFT : input.active ? RetailerStatus.UNDER_REVIEW : RetailerStatus.INACTIVE;
+    // A shop registered by a salesperson is a completed submission, not a local
+    // draft. This makes it immediately visible in the manager's Pending
+    // Approvals queue while keeping it unavailable as an approved retailer
+    // until the manager reviews it.
+    const status = req.auth.role === Role.AGENT ? RetailerStatus.SUBMITTED : input.active ? RetailerStatus.UNDER_REVIEW : RetailerStatus.INACTIVE;
     const brVerificationStatus = input.brNumber ? RetailerDocumentStatus.PENDING : RetailerDocumentStatus.NOT_PROVIDED;
     
     const shopData = {
