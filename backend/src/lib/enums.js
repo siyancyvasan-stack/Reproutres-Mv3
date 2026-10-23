@@ -74,7 +74,13 @@ export const RetailerDocumentType = {
 export const RetailerStatus = {
     ACTIVE: 'ACTIVE',
     PENDING: 'PENDING',
-    SUSPENDED: 'SUSPENDED'
+    DRAFT: 'DRAFT',
+    SUBMITTED: 'SUBMITTED',
+    UNDER_REVIEW: 'UNDER_REVIEW',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED',
+    SUSPENDED: 'SUSPENDED',
+    INACTIVE: 'INACTIVE'
 };
 
 export const ShopImageType = {
