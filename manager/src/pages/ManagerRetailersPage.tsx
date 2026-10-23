@@ -89,7 +89,7 @@ export const ManagerRetailersPage = ({
       pages: 1,
     }),
     [search, setSearch] = useState(""),
-    [status, setStatus] = useState(view === "pending" ? "SUBMITTED" : ""),
+    [status, setStatus] = useState(view === "pending" ? "pending" : ""),
     [adding, setAdding] = useState(view === "add"),
     [selected, setSelected] = useState<Row>(),
     [pendingDelete, setPendingDelete] = useState<Row>(),
@@ -147,6 +147,18 @@ export const ManagerRetailersPage = ({
       );
     } finally {
       setDeleting(false);
+    }
+  };
+  const approve = async (shop: Row) => {
+    try {
+      await apiRequest(`/api/v1/shops/${shop.id}/review`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "APPROVE" }),
+      });
+      showToast("Shop approved", `${shop.name} is now an active retailer.`, "success");
+      await load(page);
+    } catch (e) {
+      showToast("Approval failed", e instanceof Error ? e.message : "Unable to approve shop.", "error");
     }
   };
   const closeAdd = () => {
@@ -332,6 +344,16 @@ export const ManagerRetailersPage = ({
                               <Eye className="h-4" />
                               View
                             </button>
+                            {portal === "manager" && (
+                              ["SUBMITTED", "UNDER_REVIEW"].includes(r.status) && (
+                                <button
+                                  onClick={() => void approve(r)}
+                                  className="font-bold text-emerald-400"
+                                >
+                                  Approve
+                                </button>
+                              )
+                            )}
                             {portal === "manager" && (
                               <button
                                 onClick={() => setPendingDelete(r)}

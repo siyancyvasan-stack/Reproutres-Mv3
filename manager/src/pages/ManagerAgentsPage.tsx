@@ -104,6 +104,18 @@ export const ManagerAgentsPage: React.FC = () => {
     return `TF-${String(highestCode + 1).padStart(3, "0")}`;
   };
 
+  const resetAgentForm = (employeeCode = getNextEmployeeCode(agents)) => {
+    setEditingAgent(null);
+    setNewName("");
+    setNewEmail("");
+    setNewPhone("");
+    setNewRoute("Route A - Maharagama");
+    setNewPassword("Agent@123");
+    setNewEmployeeCode(employeeCode);
+    setNewVehicleNo("");
+    setFormError("");
+  };
+
   useEffect(() => {
     loadAgents([])
       .then(setAgents)
@@ -412,13 +424,7 @@ export const ManagerAgentsPage: React.FC = () => {
           />
           <button
             onClick={() => {
-              setEditingAgent(null);
-              setNewName("");
-              setNewEmail("");
-              setNewPhone("");
-              setNewEmployeeCode(getNextEmployeeCode(agents));
-              setNewPassword("Agent@123");
-              setFormError("");
+              resetAgentForm();
               setIsAddModalOpen(true);
             }}
             className="px-4 py-2.5 rounded-xl text-xs font-bold text-white glass-button-primary flex items-center gap-2 cursor-pointer"
@@ -760,7 +766,13 @@ export const ManagerAgentsPage: React.FC = () => {
               disabled={isCreating}
               className="px-5 py-2.5 rounded-xl text-xs font-bold text-white glass-button-primary"
             >
-              {isCreating ? "Creating…" : "Add Agent"}
+              {isCreating
+                ? editingAgent
+                  ? "Saving…"
+                  : "Creating…"
+                : editingAgent
+                  ? "Save Changes"
+                  : "Add Agent"}
             </button>
           </div>
         </form>

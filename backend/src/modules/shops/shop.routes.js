@@ -83,7 +83,8 @@ shopRouter.get('/', async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const search = String(req.query.search ?? '').trim();
-    const status = z.nativeEnum(RetailerStatus).safeParse(req.query.status);
+    const requestedStatus = String(req.query.status ?? '').trim();
+    const status = z.nativeEnum(RetailerStatus).safeParse(requestedStatus);
     const salespersonId = String(req.query.salespersonId ?? '').trim();
     const territory = String(req.query.territory ?? '').trim();
     
@@ -95,7 +96,10 @@ shopRouter.get('/', async (req, res) => {
         const searchPattern = `%${search}%`;
         params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
     }
-    if (status.success) {
+    if (requestedStatus === 'pending') {
+        whereClause += ' AND status IN (?, ?)';
+        params.push(RetailerStatus.SUBMITTED, RetailerStatus.UNDER_REVIEW);
+    } else if (status.success) {
         whereClause += ' AND status = ?';
         params.push(status.data);
     }
@@ -211,6 +215,7 @@ shopRouter.post('/', authorize(Role.ADMIN, Role.MANAGER, Role.AGENT), async (req
     // draft. This makes it immediately visible in the manager's Pending
     // Approvals queue while keeping it unavailable as an approved retailer
     // until the manager reviews it.
+    const submittedAt = req.auth.role === Role.AGENT ? new Date() : null;
     const status = req.auth.role === Role.AGENT ? RetailerStatus.SUBMITTED : input.active ? RetailerStatus.UNDER_REVIEW : RetailerStatus.INACTIVE;
     const brVerificationStatus = input.brNumber ? RetailerDocumentStatus.PENDING : RetailerDocumentStatus.NOT_PROVIDED;
     
@@ -224,7 +229,7 @@ shopRouter.post('/', authorize(Role.ADMIN, Role.MANAGER, Role.AGENT), async (req
         country: input.country, territory: input.territory ?? null, shopCategory: input.shopCategory ?? null, retailerType: input.retailerType ?? null,
         gpsAccuracy: input.gpsAccuracy ?? null, gpsCapturedAt: input.gpsCapturedAt ? new Date(input.gpsCapturedAt) : null, productCategories: JSON.stringify(input.productCategories),
         expectedMonthlyPurchase: input.expectedMonthlyPurchase, currentSupplier: input.currentSupplier ?? null, deliveryPreference: input.deliveryPreference ?? null, preferredVisitDays: JSON.stringify(input.preferredVisitDays),
-        shopRequirements: input.shopRequirements ?? null, salesNotes: input.salesNotes ?? null, createdAt: new Date(), updatedAt: new Date()
+        shopRequirements: input.shopRequirements ?? null, salesNotes: input.salesNotes ?? null, submittedAt, createdAt: new Date(), updatedAt: new Date()
     };
     
     const keys = Object.keys(shopData);
