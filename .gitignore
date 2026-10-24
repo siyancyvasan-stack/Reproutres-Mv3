@@ -14,3 +14,7 @@ build/
 **/dist/
 **/build/
 **/.git-backup/
+
+# Local repository checkouts accidentally created inside the workspace.
+Reoprotues-mv3/
+Reproutres-Mv3/
