@@ -5,7 +5,6 @@
     "preview": { "distribution": "internal", "android": { "buildType": "apk" } },
     "production-apk": {
       "distribution": "internal",
-      "environment": "production",
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.reproutes.com",
@@ -16,7 +15,6 @@
     },
     "production": {
       "autoIncrement": true,
-      "environment": "production",
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.reproutes.com",
